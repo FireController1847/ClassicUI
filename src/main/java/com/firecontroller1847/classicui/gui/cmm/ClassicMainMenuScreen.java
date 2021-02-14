@@ -94,6 +94,7 @@ public class ClassicMainMenuScreen extends Screen {
         Feature.BUTTON_SINGLEPLAYER,
         Feature.BUTTON_MULTIPLAYER,
         Feature.BUTTON_RESOURCEPACKS,
+        Feature.BUTTON_MODS,
         Feature.BUTTON_LANGUAGE,
         Feature.BUTTON_OPTIONS,
         Feature.BUTTON_QUIT,
@@ -108,7 +109,8 @@ public class ClassicMainMenuScreen extends Screen {
     private final EnumSet<Feature> CURRENT_FEATURE_SET;
 
     // Resources
-    private static final RenderSkyboxCube RESOURCE_PANORAMA_SKYBOX = new RenderSkyboxCube(new ResourceLocation("textures/gui/title/background/panorama"));
+    private static final RenderSkyboxCube RESOURCE_PANORAMA_SKYBOX_DEFAULT = new RenderSkyboxCube(new ResourceLocation("textures/gui/title/background/panorama"));
+    private static final RenderSkyboxCube RESOURCE_PANORAMA_SKYBOX_OLD = new RenderSkyboxCube(new ResourceLocation(ClassicUI.MOD_ID, "textures/gui/title/background/panorama"));
     private static final ResourceLocation RESOURCE_PANORAMA_OVERLAY = new ResourceLocation("textures/gui/title/background/panorama_overlay.png");
     private static final ResourceLocation RESOURCE_TITLE_MINECRAFT = new ResourceLocation("textures/gui/title/minecraft.png");
     private static final ResourceLocation RESOURCE_TITLE_EDITION = new ResourceLocation("textures/gui/title/edition.png");
@@ -123,7 +125,8 @@ public class ClassicMainMenuScreen extends Screen {
     private long firstRenderTime;
 
     // Variables
-    private final RenderSkybox panorama = new RenderSkybox(RESOURCE_PANORAMA_SKYBOX);
+    private final RenderSkybox PANORAMA_DEFAULT = new RenderSkybox(RESOURCE_PANORAMA_SKYBOX_DEFAULT);
+    private final RenderSkybox PANORAMA_OLD = new RenderSkybox(RESOURCE_PANORAMA_SKYBOX_OLD);
     private boolean showMisspelledTitleScreen;
     private String splash;
 
@@ -146,7 +149,16 @@ public class ClassicMainMenuScreen extends Screen {
                 features = FS1_16;
             }
         }
-        this.CURRENT_FEATURE_SET = features;
+        this.CURRENT_FEATURE_SET = features.clone();
+
+        // Remove disabled features
+        for (String feature : Config.fscmm.get()) {
+            try {
+                this.CURRENT_FEATURE_SET.remove(ClassicMainMenuScreen.Feature.valueOf(feature));
+            } catch (Exception e) {
+                // Forge failed to validate. Why!
+            }
+        }
 
         // MainMenu Stuff
         this.showMisspelledTitleScreen = (double) (new Random()).nextFloat() < 1.0e-4d;
@@ -200,55 +212,53 @@ public class ClassicMainMenuScreen extends Screen {
             }, multiplayerDisabledTooltip)).active = multiplayerEnabled;
         }
 
-        // Mods & Realms Buttons
-        if (CURRENT_VERSION == SupportedVersion.R1_2) {
-            this.addButton(new Button(leftOffset, topOffset + (count++ * 24), 200, 20, new StringTextComponent(I18n.format("options.resourcepack").replace("...", "")), (button) -> {
-                minecraft.displayGuiScreen(new PackScreen(this, minecraft.getResourcePackList(), resourcePackList -> {
-                    // I tried doing this by creating a new OptionsScreen and reflectively calling the method,
-                    // but it didn't like that, so we get this and you're going to be happy about it
-                    List<String> list = ImmutableList.copyOf(minecraft.gameSettings.resourcePacks);
-                    minecraft.gameSettings.resourcePacks.clear();
-                    minecraft.gameSettings.incompatibleResourcePacks.clear();
-                    for (ResourcePackInfo resourcePackInfo : resourcePackList.getEnabledPacks()) {
-                        if (!resourcePackInfo.isOrderLocked()) {
-                            minecraft.gameSettings.resourcePacks.add(resourcePackInfo.getName());
-                            if (!resourcePackInfo.getCompatibility().isCompatible()) {
-                                minecraft.gameSettings.incompatibleResourcePacks.add(resourcePackInfo.getName());
+        // Mods, ResourcePacks & Realms Buttons
+        boolean left = CURRENT_VERSION == SupportedVersion.R1_2 ? isFeatureEnabled(Feature.BUTTON_RESOURCEPACKS) : (CURRENT_VERSION == SupportedVersion.R1_7 ? isFeatureEnabled(Feature.BUTTON_REALMS) : isFeatureEnabled(Feature.BUTTON_MODS));
+        boolean right = CURRENT_VERSION == SupportedVersion.R1_7 || CURRENT_VERSION == SupportedVersion.R1_2 ? isFeatureEnabled(Feature.BUTTON_MODS) : isFeatureEnabled(Feature.BUTTON_REALMS);
+        boolean split = left && right;
+        if (left) {
+            if (CURRENT_VERSION == SupportedVersion.R1_2) {
+                this.addButton(new Button(leftOffset, topOffset + (split ? count * 24 : count++ * 24), split ? 98 : 200, 20, new StringTextComponent(I18n.format("options.resourcepack").replace("...", "")), (button) -> {
+                    minecraft.displayGuiScreen(new PackScreen(this, minecraft.getResourcePackList(), resourcePackList -> {
+                        // I tried doing this by creating a new OptionsScreen and reflectively calling the method,
+                        // but it didn't like that, so we get this and you're going to be happy about it
+                        List<String> list = ImmutableList.copyOf(minecraft.gameSettings.resourcePacks);
+                        minecraft.gameSettings.resourcePacks.clear();
+                        minecraft.gameSettings.incompatibleResourcePacks.clear();
+                        for (ResourcePackInfo resourcePackInfo : resourcePackList.getEnabledPacks()) {
+                            if (!resourcePackInfo.isOrderLocked()) {
+                                minecraft.gameSettings.resourcePacks.add(resourcePackInfo.getName());
+                                if (!resourcePackInfo.getCompatibility().isCompatible()) {
+                                    minecraft.gameSettings.incompatibleResourcePacks.add(resourcePackInfo.getName());
+                                }
                             }
                         }
-                    }
-                    minecraft.gameSettings.saveOptions();
-                    List<String> list1 = ImmutableList.copyOf(minecraft.gameSettings.resourcePacks);
-                    if (!list1.equals(list)) {
-                        minecraft.reloadResources(); // Forge, what is FMLClientHandler?
-                    }
-                }, minecraft.getFileResourcePacks(), new TranslationTextComponent("resourcePack.title")));
-            }));
-        } else {
-            boolean left = isFeatureEnabled(Feature.BUTTON_MODS);
-            boolean right = isFeatureEnabled(Feature.BUTTON_REALMS);
-            boolean split = left && right;
-            if (left) {
-                if (CURRENT_VERSION == SupportedVersion.R1_7) {
-                    this.addButton(new Button(leftOffset, topOffset + (split ? count * 24 : count++ * 24), split ? 98 : 200, 20, new TranslationTextComponent("menu.online"), (button) -> {
-                        (new RealmsBridgeScreen()).func_231394_a_(this);
-                    }, multiplayerDisabledTooltip)).active = multiplayerEnabled;
-                } else {
-                    this.addButton(new Button(leftOffset, topOffset + (split ? count * 24 : count++ * 24), split ? 98 : 200, 20, new TranslationTextComponent("fml.menu.mods"), button -> {
-                        minecraft.displayGuiScreen(new ModListScreen(this));
-                    }));
-                }
+                        minecraft.gameSettings.saveOptions();
+                        List<String> list1 = ImmutableList.copyOf(minecraft.gameSettings.resourcePacks);
+                        if (!list1.equals(list)) {
+                            minecraft.reloadResources(); // Forge, what is FMLClientHandler?
+                        }
+                    }, minecraft.getFileResourcePacks(), new TranslationTextComponent("resourcePack.title")));
+                }));
+            } else if (CURRENT_VERSION == SupportedVersion.R1_7) {
+                this.addButton(new Button(leftOffset, topOffset + (split ? count * 24 : count++ * 24), split ? 98 : 200, 20, new TranslationTextComponent("menu.online"), (button) -> {
+                    (new RealmsBridgeScreen()).func_231394_a_(this);
+                }, multiplayerDisabledTooltip)).active = multiplayerEnabled;
+            } else {
+                this.addButton(new Button(leftOffset, topOffset + (split ? count * 24 : count++ * 24), split ? 98 : 200, 20, new TranslationTextComponent("fml.menu.mods"), button -> {
+                    minecraft.displayGuiScreen(new ModListScreen(this));
+                }));
             }
-            if (right) {
-                if (CURRENT_VERSION == SupportedVersion.R1_7) {
-                    this.addButton(new Button(leftOffset + (split ? 102 : 0), topOffset + (count++ * 24), split ? 98 : 200, 20, new TranslationTextComponent("fml.menu.mods"), button -> {
-                        minecraft.displayGuiScreen(new ModListScreen(this));
-                    }));
-                } else {
-                    this.addButton(new Button(leftOffset + (split ? 102 : 0), topOffset + (count++ * 24), split ? 98 : 200, 20, new TranslationTextComponent("menu.online"), (button) -> {
-                        (new RealmsBridgeScreen()).func_231394_a_(this);
-                    }, multiplayerDisabledTooltip)).active = multiplayerEnabled;
-                }
+        }
+        if (right) {
+            if (CURRENT_VERSION == SupportedVersion.R1_7 || CURRENT_VERSION == SupportedVersion.R1_2) {
+                this.addButton(new Button(leftOffset + (split ? 102 : 0), topOffset + (count++ * 24), split ? 98 : 200, 20, new TranslationTextComponent("fml.menu.mods"), button -> {
+                    minecraft.displayGuiScreen(new ModListScreen(this));
+                }));
+            } else {
+                this.addButton(new Button(leftOffset + (split ? 102 : 0), topOffset + (count++ * 24), split ? 98 : 200, 20, new TranslationTextComponent("menu.online"), (button) -> {
+                    (new RealmsBridgeScreen()).func_231394_a_(this);
+                }, multiplayerDisabledTooltip)).active = multiplayerEnabled;
             }
         }
 
@@ -266,9 +276,9 @@ public class ClassicMainMenuScreen extends Screen {
         }
 
         // Options & Quit Game Buttons
-        boolean left = isFeatureEnabled(Feature.BUTTON_OPTIONS);
-        boolean right = isFeatureEnabled(Feature.BUTTON_QUIT);
-        boolean split = left && right;
+        left = isFeatureEnabled(Feature.BUTTON_OPTIONS);
+        right = isFeatureEnabled(Feature.BUTTON_QUIT);
+        split = left && right;
         if (left) {
             this.addButton(new Button(leftOffset, topOffset + (count * 24), split ? 98 : 200, 20, new TranslationTextComponent("menu.options"), (button) -> {
                 minecraft.displayGuiScreen(new OptionsScreen(this, minecraft.gameSettings));
@@ -305,7 +315,11 @@ public class ClassicMainMenuScreen extends Screen {
 
         // Render Panorama
         if (isFeatureEnabled(Feature.PANORAMA)) {
-            panorama.render(partialTicks, MathHelper.clamp(floatAlpha, 0.0f, 1.0f));
+            if (CURRENT_VERSION == SupportedVersion.R1_2 || CURRENT_VERSION == SupportedVersion.R1_7) {
+                PANORAMA_OLD.render(partialTicks, MathHelper.clamp(floatAlpha, 0.0f, 1.0f));
+            } else {
+                PANORAMA_DEFAULT.render(partialTicks, MathHelper.clamp(floatAlpha, 0.0f, 1.0f));
+            }
         }
 
         // Render Panorama Overlay
@@ -330,19 +344,33 @@ public class ClassicMainMenuScreen extends Screen {
         // Draw Minecraft Text
         if (isFeatureEnabled(Feature.TITLE_MINECRAFT)) {
             minecraft.getTextureManager().bindTexture(RESOURCE_TITLE_MINECRAFT);
-            if (showMisspelledTitleScreen) {
-                this.blitBlackOutline(width / 2 - 137, 30, (x, y) -> {
-                    this.blit(matrixStack, x, y, 0, 0, 99, 44);
-                    this.blit(matrixStack, x + 99, y, 129, 0, 27, 44);
-                    this.blit(matrixStack, x + 99 + 26, y, 126, 0, 3, 44);
-                    this.blit(matrixStack, x + 99 + 26 + 3, y, 99, 0, 26, 44);
-                    this.blit(matrixStack, x + 155, y, 0, 45, 155, 44);
-                });
+            int titleLeftOffset = width / 2 - 137;
+            if (CURRENT_VERSION == SupportedVersion.R1_7 || CURRENT_VERSION == SupportedVersion.R1_2) {
+                if (showMisspelledTitleScreen) {
+                    this.blit(matrixStack, titleLeftOffset, 30, 0, 0, 99, 44);
+                    this.blit(matrixStack, titleLeftOffset + 99, 30, 129, 0, 27, 44);
+                    this.blit(matrixStack, titleLeftOffset + 99 + 26, 30, 126, 0, 3, 44);
+                    this.blit(matrixStack, titleLeftOffset + 99 + 26 + 3, 30, 99, 0, 26, 44);
+                    this.blit(matrixStack, titleLeftOffset + 155, 30, 0, 45, 155, 44);
+                } else {
+                    this.blit(matrixStack, titleLeftOffset, 30, 0, 0, 155, 44);
+                    this.blit(matrixStack, titleLeftOffset + 155, 30, 0, 45, 155, 44);
+                }
             } else {
-                this.blitBlackOutline(width / 2 - 137, 30, (x, y) -> {
-                    this.blit(matrixStack, x, y, 0, 0, 155, 44);
-                    this.blit(matrixStack, x + 155, y, 0, 45, 155, 44);
-                });
+                if (showMisspelledTitleScreen) {
+                    this.blitBlackOutline(titleLeftOffset, 30, (x, y) -> {
+                        this.blit(matrixStack, x, y, 0, 0, 99, 44);
+                        this.blit(matrixStack, x + 99, y, 129, 0, 27, 44);
+                        this.blit(matrixStack, x + 99 + 26, y, 126, 0, 3, 44);
+                        this.blit(matrixStack, x + 99 + 26 + 3, y, 99, 0, 26, 44);
+                        this.blit(matrixStack, x + 155, y, 0, 45, 155, 44);
+                    });
+                } else {
+                    this.blitBlackOutline(titleLeftOffset, 30, (x, y) -> {
+                        this.blit(matrixStack, x, y, 0, 0, 155, 44);
+                        this.blit(matrixStack, x + 155, y, 0, 45, 155, 44);
+                    });
+                }
             }
         }
 

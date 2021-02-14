@@ -64,8 +64,9 @@ public class ClassicUI {
                 e.printStackTrace();
                 showFade = false;
             }
-            Minecraft.getInstance().displayGuiScreen(new ClassicMainMenuScreen(SupportedVersion.R1_7, null, showFade));
+            Minecraft.getInstance().displayGuiScreen(new ClassicMainMenuScreen(Config.selectedVersion.get(), null, showFade));
         }
+
     }
 
     // Sends a debug message to console
